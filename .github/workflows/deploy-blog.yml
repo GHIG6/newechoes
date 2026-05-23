@@ -23,8 +23,8 @@ jobs:
           corepack pnpm install --frozen-lockfile
           corepack pnpm build
 
-      - name: Package dist
-        run: tar -C dist -czf /tmp/newechoes-${{ github.sha }}.tar.gz .
+      - name: Package dist/client
+        run: tar -C dist/client -czf /tmp/newechoes-${{ github.sha }}.tar.gz .
 
       - name: Configure SSH
         run: |
