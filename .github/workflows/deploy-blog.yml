@@ -1,0 +1,54 @@
+name: Deploy Blog
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install and build
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm build
+
+      - name: Package dist
+        run: tar -C dist -czf /tmp/newechoes-${{ github.sha }}.tar.gz .
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.PROXY07_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.PROXY07_PORT }}" "${{ secrets.PROXY07_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload release
+        run: |
+          scp -P "${{ secrets.PROXY07_PORT }}" /tmp/newechoes-${{ github.sha }}.tar.gz \
+            "${{ secrets.PROXY07_USER }}@${{ secrets.PROXY07_HOST }}:/tmp/newechoes-${{ github.sha }}.tar.gz"
+
+      - name: Promote release
+        run: |
+          ssh -p "${{ secrets.PROXY07_PORT }}" "${{ secrets.PROXY07_USER }}@${{ secrets.PROXY07_HOST }}" 'bash -s' <<'REMOTE_DEPLOY'
+          set -euo pipefail
+          sha='${{ github.sha }}'
+          release="/var/www/newechoes/releases/$sha"
+          archive="/tmp/newechoes-$sha.tar.gz"
+          mkdir -p "$release"
+          tar -xzf "$archive" -C "$release"
+          ln -sfn "$release" /var/www/newechoes/current
+          rm -f "$archive"
+          find /var/www/newechoes/releases -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+            | sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r rm -rf
+          REMOTE_DEPLOY
