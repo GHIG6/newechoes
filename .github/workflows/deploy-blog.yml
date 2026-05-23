@@ -31,16 +31,32 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.PROXY07_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ secrets.PROXY07_PORT }}" "${{ secrets.PROXY07_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.RELAY_PORT }}" "${{ secrets.RELAY_HOST }}" >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host relay-vps
+            HostName ${{ secrets.RELAY_HOST }}
+            User ${{ secrets.RELAY_USER }}
+            Port ${{ secrets.RELAY_PORT }}
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking accept-new
+
+          Host proxy07
+            HostName ${{ secrets.PROXY07_HOST }}
+            User ${{ secrets.PROXY07_USER }}
+            Port ${{ secrets.PROXY07_PORT }}
+            IdentityFile ~/.ssh/id_ed25519
+            ProxyJump relay-vps
+            StrictHostKeyChecking accept-new
+          EOF
 
       - name: Upload release
         run: |
-          scp -P "${{ secrets.PROXY07_PORT }}" /tmp/newechoes-${{ github.sha }}.tar.gz \
-            "${{ secrets.PROXY07_USER }}@${{ secrets.PROXY07_HOST }}:/tmp/newechoes-${{ github.sha }}.tar.gz"
+          scp /tmp/newechoes-${{ github.sha }}.tar.gz \
+            proxy07:/tmp/newechoes-${{ github.sha }}.tar.gz
 
       - name: Promote release
         run: |
-          ssh -p "${{ secrets.PROXY07_PORT }}" "${{ secrets.PROXY07_USER }}@${{ secrets.PROXY07_HOST }}" 'bash -s' <<'REMOTE_DEPLOY'
+          ssh proxy07 'bash -s' <<'REMOTE_DEPLOY'
           set -euo pipefail
           sha='${{ github.sha }}'
           release="/var/www/newechoes/releases/$sha"
